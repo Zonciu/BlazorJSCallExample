@@ -1,0 +1,121 @@
+﻿@page "/"
+@using G2Plot.Plot
+@using BlazorJSCallExample.Core
+@using System.Timers
+@using System.Text.Json
+@implements IDisposable
+
+<Gauge Style="height: 250px" @ref="            _gauge" TItem="double" Option="@_gaugeOption"/>
+
+@code {
+
+    Gauge<double> _gauge;
+
+    GaugeOption _gaugeOption;
+
+    double _scale = 2000;
+
+    Timer _timer;
+
+    Random _random = new Random();
+
+    [Inject]
+    public IJSRuntime JS { get; set; }
+
+    JSCall _dotNetCallback = JSCall.DotNetAsync<JsonElement, string>(async time => $"Time: {time.GetDouble()}");
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        SetupConfig();
+        _timer = new Timer {Interval = 1000};
+        _timer.Elapsed += UpdateValue;
+        _timer.Start();
+    }
+
+    private void UpdateValue(object sender, ElapsedEventArgs elapsedEventArgs)
+    {
+        var value = _random.NextDouble() * _scale;
+        InvokeAsync(async () =>
+        {
+            try
+            {
+                await _gauge.ChangeData(value / _scale);
+                await JS.InvokeVoidAsync("demo.dotnetTest", _dotNetCallback);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+        });
+    }
+
+    private void SetupConfig()
+    {
+        var config = new GaugeOption
+        {
+            autoFit = true,
+            percent = 0,
+            range = new()
+            {
+                ticks = new[] {0d, 1000d / 2000, 1500d / 2000, 1d},
+                color = new[] {"#F4664A", "#FAAD14", "#30BF78"},
+            },
+            indicator = new()
+            {
+                pointer = new()
+                {
+                    style = new()
+                    {
+                        stroke = "#D0D0D0"
+                    }
+                },
+                pin = new()
+                {
+                    style = new()
+                    {
+                        stroke = "#D0D0D0"
+                    }
+                }
+            },
+            axis = new()
+            {
+                label = new()
+                {
+                    formatter = JSCall.Dynamic($"(v) => Number(v) * {_scale}")
+                },
+                subTickLine = new()
+                {
+                    count = 3
+                }
+            },
+            statistic = new()
+            {
+                content = new()
+                {
+                    formatter = JSCall.Dynamic($"({{ percent }}) => `${{(percent * {_scale}).toFixed(1)}} ℃`"),
+                    style = new Dictionary<string, object>()
+                    {
+                        {"font-size", "1.5rem"}
+                    }
+                },
+                title = new()
+                {
+                    formatter = JSCall.Dynamic(@"({percent})=> `${percent > 0.5 ? 'Good' : 'Bad'}`"),
+                    style = JSCall.Native("demo.charts.temp.titleStyle"),
+                    offsetY = 20
+                },
+            },
+            animation = null
+        };
+
+        _gaugeOption = config;
+    }
+
+    public void Dispose()
+    {
+        _gauge?.Dispose();
+        _timer?.Dispose();
+    }
+
+}
